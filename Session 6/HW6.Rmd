@@ -1,0 +1,239 @@
+---
+title: "Homework 6"
+author: "Carlos Siri"
+date: "3/22/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(haven)
+library(dplyr)
+library(ggplot2)
+library(MatchIt)
+library(psych) # for dummy variables
+homework1 <- read_sas("homework1.sas7bdat", NULL)
+homework1$Socio_Economical_Class <- as.character(homework1$Socio_Economical_Class)
+homework1$adopt <- as.factor(homework1$adopt)
+homework1$nonadopter <- as.factor(homework1$nonadopter)
+socio_dummy <- dummy.code(homework1$Socio_Economical_Class)
+colnames(socio_dummy) <- c("Socio_Economical_Class_3","Socio_Economical_Class_2", "Socio_Economical_Class_1", "Socio_Economical_Class_4")
+homework1 <- data.frame(homework1, socio_dummy)
+homework2 <- read_sas("homework2.sas7bdat", NULL)
+```
+
+## Introduction
+*Does adoption change the spending behavior at the focal retailer?*
+
+To secure their piece of the online grocery pie, many retailers are rushing into the click and collect (Drive) format, where shoppers place orders online and pick up the goods themselves later.  We want to study how the adoption of such a concept changes consumers’ spending at the focal retailer (French retailer Leclerc) who opened the Drive format
+
+
+This exercise shows the steps of adopting the "Drive" (Treated), as opposed to not adopting (Control), on consumer spending. Propensity score matching is used to match adopters with non-adopters. 
+
+# 1. Pre-Analysis
+
+## 1.1 Difference-in-means: Share of Wallet
+
+The following table shows the differences in means of share of wallet for the independent variable of interest (nonadopter), which classifies panelists who adopted (1) and those who did not adopt adopted (0). 
+```{r 1.1}
+homework1 %>%
+  group_by(nonadopter) %>%
+  summarise(n_panelmembers = n(),
+            mean_sow = mean(sow_before),
+            std_error = sd(sow_before) / sqrt(n_panelmembers))
+```
+
+
+There is statistical significance in the difference in means of the share of wallet for the interest variable. 
+```{r 1.1.1}
+with(homework1, t.test(sow_before ~ nonadopter))
+```
+
+## 1.2 Difference-in-means of covariates  
+
+* PERIOREF:	identifies 4-weekly period
+* Age: age panelmember
+* HHS: Number of people in the household
+* Socio_Economical_Class:	categorical variable; indicates social class
+* households: total number of households in the local market
+* lbsktsize_rev_pan	average  basket size per trip (lagged)
+* lnr_majors_pan	number of major trips made by household
+* lnr_shoptrips_per	number of trips made by household per month (lagged)
+* localshop	number of local shops in the local market in which Drive is opened
+* ltotalspent_internet	total budget spent on line by household (lagged)
+* ltotalspent_leclerc	total spent at focal retailer (leclerc) lagged
+* ms_sq_meters_lec	share of store floor owned by focal retailer in local market in which Drive concept opens
+* nr_compdrives	Number of competing Drives in local market
+* nr_hd_lec	number of competing price fighters owned by focal retailer
+* nr_hd_nonlec	number of competing price fighters owned by competing  retailers in focal market
+* nr_hmsm_lec	number of competing super and hypermarkets owned by focal retailer
+* nr_hmsm_nonlec	number of competing super and hypermarketss owned by competing  retailers in focal market
+* numdrives	
+* zone1	dummy variables indicating type of market (rural, urban etc….)
+* zone2	
+* zone3	
+* zone4	
+* zone5	
+* zone6	
+* zone7	
+* zone8	
+
+The t-test between nonadopter and each of the covariates shows that the means for all covariates are statistically different, except for the following covariates: *nr_hd_lec, zone5, zone8* (Appendix 1)
+# 2 Propensity Score Estimation
+
+I manually estimate the propensity score to visualize how the treated and the control variables will be matched. 
+
+```{r 2}
+homework1_cov <- c('PERIOREF', 'Age', 'HHS', 
+                   'Socio_Economical_Class_1', 'Socio_Economical_Class_2', 'Socio_Economical_Class_3', 'Socio_Economical_Class_4',
+                   'households', 'lbsktsize_rev_pan', 'lnr_majors_pan', 'lnr_shoptrips_per', 'localshop', 'ltotalspent_internet', 
+                   'ltotalspent_leclerc', 'ms_sq_meters_lec', 'nr_compdrives', 'nr_hd_lec', 'nr_hd_nonlec', 'nr_hmsm_lec', 
+                   'nr_hmsm_nonlec', 'numdrives', 'zone1', 'zone2', 'zone3', 'zone4', 'zone5', 'zone6', 'zone7', 'zone8') 
+
+m1 <- glm(nonadopter ~ PERIOREF + Age + HHS + Socio_Economical_Class_1 + 
+            Socio_Economical_Class_2 + Socio_Economical_Class_3 + Socio_Economical_Class_4 + 
+            households + lbsktsize_rev_pan + lnr_majors_pan + lnr_shoptrips_per + localshop + 
+            ltotalspent_internet + ltotalspent_leclerc + ms_sq_meters_lec + nr_compdrives +
+            nr_hd_lec + nr_hd_nonlec + nr_hmsm_lec + nr_hmsm_nonlec + numdrives + 
+            zone1 + zone2 + zone3 + zone4 + zone5 + zone6 + zone7 + zone8 - 1,
+          family = binomial(), data = homework1)
+m1_df <- data.frame(propensity_score = predict(m1, type = "response"),
+                    nonadopter = m1$model$nonadopter)
+```
+
+## 2.1 Examine output
+
+```{r 2.1}
+labs <- paste("Drive", c("Non-Adopter", "Adopter"))
+m1_df %>%
+  mutate(nonadopter = ifelse(nonadopter == 1, labs[1], labs[2])) %>%
+  ggplot(aes(x = propensity_score)) +
+  geom_histogram(color = "white") +
+  facet_wrap(~nonadopter) +
+  xlab("Probability of adopting Drive") +
+  theme_bw()
+```
+
+# 3 Matching Algorithm 
+
+The MatchIt package is used to match adopters with non adopters. I use greedy matching for this exercise.
+```{r 3.0}
+homework1_nomiss <- homework1 %>%  # MatchIt does not allow missing values
+  select(sow_before, nonadopter, adopt, one_of(homework1_cov)) %>%
+  na.omit() %>%
+  mutate(adopter = ifelse(nonadopter == 1, 0, 1)) # changed nonadopted to adopter. R takes 1's for treated variables
+
+m2 <- matchit(adopter ~ PERIOREF + Age + HHS + Socio_Economical_Class_1 + 
+                Socio_Economical_Class_2 + Socio_Economical_Class_3 + Socio_Economical_Class_4 + 
+                households + lbsktsize_rev_pan + lnr_majors_pan + lnr_shoptrips_per + localshop + 
+                ltotalspent_internet + ltotalspent_leclerc + ms_sq_meters_lec + nr_compdrives +
+                nr_hd_lec + nr_hd_nonlec + nr_hmsm_lec + nr_hmsm_nonlec + numdrives +
+                zone1 + zone2 + zone3 + zone4 + zone5 + zone6 + zone7 + zone8 - 1,
+              method = "nearest", data = homework1_nomiss)
+```
+
+The final dataset contains 15456 observations, or 7728 pairs of treated and control variables. 
+
+```{r 3.0.1}
+df2 <- match.data(m2)
+dim(df2)
+```
+
+
+# 4 Assesing Balance
+
+## 4.1 Examine Covariate Balance
+
+Appendix 2 show the t-tests testing the balance with the covariates. The covariate *lbsktsize_rev_pan*  has an acceptable but higher p-value than the other co-variates (p-value = 0.03826). The results are also summarized in the love-plot below. 
+
+```{r 4.1}
+m2.sum <- summary(m2)
+plot(m2.sum,  var.order = "unmatched")
+```
+
+The plot below show that at higher quantiles, *lbsktsize_rev_pan* for adopters seem to reach a limit before non-adopters. This suggests that adopters, as compared to non adopters, have a lower average basket size per trip at higher quantiles.
+```{r 4.2}
+plot(m2, type = "qq", which.xs = c("lbsktsize_rev_pan", "ltotalspent_leclerc", "zone7"))
+
+```
+
+
+# 5 Estimating treatment effects
+
+The regression below estimates the treatment effect. 
+```{r}
+df2 <- df2 %>% mutate(ln_s = log(sow_before+ 0.0000001))
+m3 <- lm(ln_s ~  adopt*adopter, data = df2)
+summary(m3)
+```
+
+# Appendix 1 Pre-treatment Covariates
+
+```{r A1}
+with(homework1, t.test(PERIOREF ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(Age ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(HHS ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(Socio_Economical_Class_1 ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(Socio_Economical_Class_2 ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(Socio_Economical_Class_3 ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(Socio_Economical_Class_4 ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(households ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(lbsktsize_rev_pan ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(lnr_majors_pan ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(lnr_shoptrips_per ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(localshop ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(ltotalspent_internet ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(ltotalspent_leclerc ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(ms_sq_meters_lec ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(nr_compdrives ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(nr_hd_lec ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(nr_hd_nonlec ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(nr_hmsm_lec ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(nr_hmsm_nonlec ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(numdrives ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(zone1 ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(zone2 ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(zone3 ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(zone4 ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(zone5 ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(zone6 ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(zone7 ~ nonadopter))  #(repeat for each covariate)
+with(homework1, t.test(zone8 ~ nonadopter))  #(repeat for each covariate)
+```
+
+
+
+
+# Appendix 2 Covariate Balance
+
+```{r A2}
+with(df2, t.test(PERIOREF ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(Age ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(HHS ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(Socio_Economical_Class_1 ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(Socio_Economical_Class_2 ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(Socio_Economical_Class_3 ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(Socio_Economical_Class_4 ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(households ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(lbsktsize_rev_pan ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(lnr_majors_pan ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(lnr_shoptrips_per ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(localshop ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(ltotalspent_internet ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(ltotalspent_leclerc ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(ms_sq_meters_lec ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(nr_compdrives ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(nr_hd_lec ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(nr_hd_nonlec ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(nr_hmsm_lec ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(nr_hmsm_nonlec ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(numdrives ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(zone1 ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(zone2 ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(zone3 ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(zone4 ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(zone5 ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(zone6 ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(zone7 ~ adopter))  #(repeat for each covariate)
+with(df2, t.test(zone8 ~ adopter))  #(repeat for each covariate)
+```
+
