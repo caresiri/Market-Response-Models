@@ -8,7 +8,7 @@ Carlos Siri
 *For both Advertising and Sales Determine the best possible ARIMA
 model.*
 
-We are presented with sales and avertising time series data spread
+We are presented with sales and advertising time series data spread
 annually from 1907 to 1960.
 
 ``` r
@@ -75,7 +75,7 @@ auto_advertising
     ## sigma^2 estimated as 43689:  log likelihood=-364.2
     ## AIC=736.4   AICc=737.22   BIC=744.36
 
-The fuction generated the following estimates \* *sales*: ARIMA(2,0,0)
+The function generated the following estimates \* *sales*: ARIMA(2,0,0)
 \* *advertising*: ARIMA(1,0,1)
 
 Anything automatic is dangerous. Lets try it manually.
@@ -268,7 +268,7 @@ ggPacf(fit4$residuals) + ggtitle("PACF of ARIMA(1,0,2) residuals")
 ![](Univariate-Time-Series-Analysis_files/figure-gfm/check%20residuals%20ADV%20102-2.png)<!-- -->
 
 The auto-ARIMA estimated an ARIMA(1,0,1) with an AIC of 736.4. The
-automatic fuction was better in this case.
+automatic function was better in this case.
 
 ## PL shares
 
