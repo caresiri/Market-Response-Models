@@ -80,78 +80,75 @@ The function generated the following estimates \* *sales*: ARIMA(2,0,0)
 
 Anything automatic is dangerous. Lets try it manually.
 
-At first sight, the trends for both plots seem to be statistically
-stationary. This can be confirmed with a Unit Root Test
-
-``` r
-sales %>% ur.kpss() %>% summary() #stationary could also use ndiffs(sales) to find the proper number of differences
-```
-
-    ## 
-    ## ####################### 
-    ## # KPSS Unit Root Test # 
-    ## ####################### 
-    ## 
-    ## Test is of type: mu with 3 lags. 
-    ## 
-    ## Value of test-statistic is: 0.1794 
-    ## 
-    ## Critical value for a significance level of: 
-    ##                 10pct  5pct 2.5pct  1pct
-    ## critical values 0.347 0.463  0.574 0.739
-
-``` r
-advertising %>% ur.kpss() %>% summary()
-```
-
-    ## 
-    ## ####################### 
-    ## # KPSS Unit Root Test # 
-    ## ####################### 
-    ## 
-    ## Test is of type: mu with 3 lags. 
-    ## 
-    ## Value of test-statistic is: 0.2121 
-    ## 
-    ## Critical value for a significance level of: 
-    ##                 10pct  5pct 2.5pct  1pct
-    ## critical values 0.347 0.463  0.574 0.739
-
-The unit root tests confirm the stationarity of the data, thus there is
-no need to difference the data. The next section estimates the Sales
-ARIMA model manually.
+The data seems to be non-stationary. This can be confirmed with a Unit
+Root Test.
 
 ### Sales
 
-The plots below show that the ACF plot dies out and that there are
-spikes at *p=2* lags. The first model we can try is an ARIMA(2,0,0)
-
 ``` r
-ggAcf(sales) + ggtitle("ACF of Sales") # acf of sales
+d1sales <- diff(sales)
+d2sales <- diff(d1sales)
+adf.test(sales)  #stationary could also use ndiffs(sales) to find the proper number of differences
 ```
 
-![](Univariate-Time-Series-Analysis_files/figure-gfm/ACF%20PACF%20of%20sales-1.png)<!-- -->
+    ## 
+    ##  Augmented Dickey-Fuller Test
+    ## 
+    ## data:  sales
+    ## Dickey-Fuller = -2.3883, Lag order = 3, p-value = 0.4181
+    ## alternative hypothesis: stationary
 
 ``` r
-ggPacf(sales) + ggtitle("PACF of Sales") # pacf of sales
+adf.test(d1sales)
 ```
 
-![](Univariate-Time-Series-Analysis_files/figure-gfm/ACF%20PACF%20of%20sales-2.png)<!-- -->
+    ## 
+    ##  Augmented Dickey-Fuller Test
+    ## 
+    ## data:  d1sales
+    ## Dickey-Fuller = -2.8116, Lag order = 3, p-value = 0.2478
+    ## alternative hypothesis: stationary
 
 ``` r
-(fit2 <- Arima(sales, order=c(2,0,0)))
+adf.test(d2sales)  
+```
+
+    ## Warning in adf.test(d2sales): p-value smaller than printed p-value
+
+    ## 
+    ##  Augmented Dickey-Fuller Test
+    ## 
+    ## data:  d2sales
+    ## Dickey-Fuller = -4.8476, Lag order = 3, p-value = 0.01
+    ## alternative hypothesis: stationary
+
+``` r
+d2sales %>% ggtsdisplay(main="")
+```
+
+![](Univariate-Time-Series-Analysis_files/figure-gfm/unit%20root%20sales-1.png)<!-- -->
+
+The unit root tests show that the sales data, and its first order
+difference, is in not stationary. We use second order difference for
+sales data.
+
+For the sales model, we see that PACF spikes at 2 lags. We will try
+ARIMA(2,2,0)
+
+``` r
+(fit2 <- Arima(sales, order=c(2,2,0)))
 ```
 
     ## Series: sales 
-    ## ARIMA(2,0,0) with non-zero mean 
+    ## ARIMA(2,2,0) 
     ## 
     ## Coefficients:
-    ##          ar1      ar2       mean
-    ##       1.3718  -0.4737  1738.7843
-    ## s.e.  0.1171   0.1195   254.8003
+    ##           ar1      ar2
+    ##       -0.2714  -0.3236
+    ## s.e.   0.1304   0.1287
     ## 
-    ## sigma^2 estimated as 42688:  log likelihood=-364.21
-    ## AIC=736.41   AICc=737.23   BIC=744.37
+    ## sigma^2 estimated as 55779:  log likelihood=-357.06
+    ## AIC=720.11   AICc=720.61   BIC=725.96
 
 ``` r
 checkresiduals(fit2)
@@ -162,90 +159,76 @@ checkresiduals(fit2)
     ## 
     ##  Ljung-Box test
     ## 
-    ## data:  Residuals from ARIMA(2,0,0) with non-zero mean
-    ## Q* = 6.9593, df = 7, p-value = 0.4331
+    ## data:  Residuals from ARIMA(2,2,0)
+    ## Q* = 8.7376, df = 8, p-value = 0.3649
     ## 
-    ## Model df: 3.   Total lags used: 10
-
-``` r
-ggPacf(fit2$residuals) + ggtitle("PACF of ARIMA(2,0,0) residuals")
-```
-
-![](Univariate-Time-Series-Analysis_files/figure-gfm/check%20residuals%20SALES-2.png)<!-- -->
-
-The ACF and PACF plots remain within the confidence interval, except for
-lag-13 (one of the lags outside the confidence interval is within the
-margin of error)
+    ## Model df: 2.   Total lags used: 10
 
 ### Advertising
 
 ``` r
-ggAcf(advertising) + ggtitle("ACF of Advertising") # acf of advertising
+d1advertising <- diff(advertising)
+d2advertising <- diff(d1advertising)
+adf.test(advertising) 
 ```
 
-![](Univariate-Time-Series-Analysis_files/figure-gfm/ACF%20PACF%20of%20advertising-1.png)<!-- -->
+    ## 
+    ##  Augmented Dickey-Fuller Test
+    ## 
+    ## data:  advertising
+    ## Dickey-Fuller = -1.5545, Lag order = 3, p-value = 0.7539
+    ## alternative hypothesis: stationary
 
 ``` r
-ggPacf(advertising) + ggtitle("PACF of Advertising") # pacf of advertising
+adf.test(d1advertising) 
 ```
 
-![](Univariate-Time-Series-Analysis_files/figure-gfm/ACF%20PACF%20of%20advertising-2.png)<!-- -->
-
-ACF seems to be dying out and there is a spike at *p=1* lags. We can
-start with an ARIMA(1,0,0) model
+    ## 
+    ##  Augmented Dickey-Fuller Test
+    ## 
+    ## data:  d1advertising
+    ## Dickey-Fuller = -2.994, Lag order = 3, p-value = 0.1744
+    ## alternative hypothesis: stationary
 
 ``` r
-(fit3 <- Arima(advertising, order=c(1,0,0)))
+adf.test(d2advertising) 
+```
+
+    ## Warning in adf.test(d2advertising): p-value smaller than printed p-value
+
+    ## 
+    ##  Augmented Dickey-Fuller Test
+    ## 
+    ## data:  d2advertising
+    ## Dickey-Fuller = -5.9856, Lag order = 3, p-value = 0.01
+    ## alternative hypothesis: stationary
+
+``` r
+d2advertising %>% ggtsdisplay(main="")
+```
+
+![](Univariate-Time-Series-Analysis_files/figure-gfm/unit%20root%20advertising-1.png)<!-- -->
+The unit root tests show that the advertising data, and its first order
+difference, is in not stationary. We use second order difference for
+sales data.
+
+There is are spike at *q=2* lags in the ACF plot. We can try an
+ARIMA(0,2,2) model
+
+``` r
+(fit4 <- Arima(advertising, order=c(0,2,2)))
 ```
 
     ## Series: advertising 
-    ## ARIMA(1,0,0) with non-zero mean 
+    ## ARIMA(0,2,2) 
     ## 
     ## Coefficients:
-    ##          ar1      mean
-    ##       0.8224  883.6361
-    ## s.e.  0.0747  149.5104
+    ##           ma1      ma2
+    ##       -0.7953  -0.2047
+    ## s.e.   0.1966   0.1875
     ## 
-    ## sigma^2 estimated as 45306:  log likelihood=-365.64
-    ## AIC=737.28   AICc=737.76   BIC=743.25
-
-``` r
-checkresiduals(fit3)
-```
-
-![](Univariate-Time-Series-Analysis_files/figure-gfm/check%20residuals%20ADV%20100-1.png)<!-- -->
-
-    ## 
-    ##  Ljung-Box test
-    ## 
-    ## data:  Residuals from ARIMA(1,0,0) with non-zero mean
-    ## Q* = 28.417, df = 8, p-value = 0.0004011
-    ## 
-    ## Model df: 2.   Total lags used: 10
-
-``` r
-ggPacf(fit3$residuals) + ggtitle("PACF of ARIMA(1,0,0) residuals")
-```
-
-![](Univariate-Time-Series-Analysis_files/figure-gfm/check%20residuals%20ADV%20100-2.png)<!-- -->
-
-There is a spike at *q=2* lags in the ACF plot. We can try an
-ARIMA(1,0,2) model
-
-``` r
-(fit4 <- Arima(advertising, order=c(1,0,2)))
-```
-
-    ## Series: advertising 
-    ## ARIMA(1,0,2) with non-zero mean 
-    ## 
-    ## Coefficients:
-    ##          ar1     ma1      ma2      mean
-    ##       0.8480  0.1172  -0.1889  878.0911
-    ## s.e.  0.1042  0.1766   0.1391  157.0358
-    ## 
-    ## sigma^2 estimated as 43568:  log likelihood=-363.61
-    ## AIC=737.21   AICc=738.46   BIC=747.16
+    ## sigma^2 estimated as 50408:  log likelihood=-356.11
+    ## AIC=718.23   AICc=718.73   BIC=724.08
 
 ``` r
 checkresiduals(fit4)
@@ -256,19 +239,10 @@ checkresiduals(fit4)
     ## 
     ##  Ljung-Box test
     ## 
-    ## data:  Residuals from ARIMA(1,0,2) with non-zero mean
-    ## Q* = 18.368, df = 6, p-value = 0.005376
+    ## data:  Residuals from ARIMA(0,2,2)
+    ## Q* = 32.282, df = 8, p-value = 8.291e-05
     ## 
-    ## Model df: 4.   Total lags used: 10
-
-``` r
-ggPacf(fit4$residuals) + ggtitle("PACF of ARIMA(1,0,2) residuals")
-```
-
-![](Univariate-Time-Series-Analysis_files/figure-gfm/check%20residuals%20ADV%20102-2.png)<!-- -->
-
-The auto-ARIMA estimated an ARIMA(1,0,1) with an AIC of 736.4. The
-automatic function was better in this case.
+    ## Model df: 2.   Total lags used: 10
 
 ## PL shares
 
